@@ -784,16 +784,45 @@
             const subject = block.content || "Mensagem do Instrutor";
             const rawMessage = block.extra || "";
 
-            const success = await sendPrivateMessage(nickname, subject, rawMessage);
+            // 1. Separa a string pelos caracteres "/" e remove espaços em branco
+            const recipients = nickname.split('/').map(n => n.trim()).filter(n => n.length > 0);
 
-            if (success) {
+            if (recipients.length === 0) {
+                setSendState('idle');
+                return;
+            }
+
+            let successCount = 0;
+            let failCount = 0;
+
+            // 2. Itera sobre cada destinatário encontrado
+            for (const recipient of recipients) {
+                // Opcional: Pequeno delay entre envios para evitar flood agressivo se a lista for grande
+                if (successCount > 0 || failCount > 0) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+
+                const success = await sendPrivateMessage(recipient, subject, rawMessage);
+                if (success) successCount++;
+                else failCount++;
+            }
+
+            // 3. Lógica de Feedback
+            if (successCount > 0) {
                 onInteract(block.id); 
-                setSentRecipient(nickname);
+                // Exibe a lista de quem recebeu
+                setSentRecipient(recipients.join(', '));
                 setSendState('sent'); 
-                setTimeout(() => { setIsOpen(false); setSendState('idle'); setNickname(''); }, 1500); 
+
+                // Se houve falha parcial, avisa o usuário
+                if (failCount > 0) {
+                    alert(`MP enviada para ${successCount} usuário(s). Falha no envio para ${failCount} usuário(s).`);
+                }
+
+                setTimeout(() => { setIsOpen(false); setSendState('idle'); setNickname(''); }, 2000); 
             } else {
                 setSendState('idle');
-                alert('Erro ao enviar MP. Verifique se o usuário existe, se você está logado no fórum ou aguarde o tempo de flood.');
+                alert('Erro ao enviar MP. Verifique se os usuários existem, se você está logado no fórum ou aguarde o tempo de flood.');
             }
         };
 
@@ -833,7 +862,7 @@
                 <div className="p-4 flex gap-2">
                       <div className="flex-1 relative">
                           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Users size={16} /></div>
-                          <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder="NICKNAME DO ALUNO" className="w-full bg-slate-100 dark:bg-dark-element pl-10 pr-4 py-3 text-sm font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 outline-none border border-slate-200 dark:border-slate-700 rounded-sm focus:border-brand focus:ring-1 focus:ring-brand font-condensed tracking-wide" autoFocus />
+                          <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder="NICK1 / NICK2 / NICK3" className="w-full bg-slate-100 dark:bg-dark-element pl-10 pr-4 py-3 text-sm font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 outline-none border border-slate-200 dark:border-slate-700 rounded-sm focus:border-brand focus:ring-1 focus:ring-brand font-condensed tracking-wide" autoFocus />
                       </div>
                       <button onClick={handleSend} disabled={!nickname.trim() || sendState !== 'idle'} className="px-6 bg-brand hover:bg-brand-hover text-white rounded-sm font-bold uppercase text-xs tracking-widest disabled:opacity-50 transition-all flex items-center justify-center min-w-[100px]">{sendState === 'sending' ? <Loader2 size={16} className="animate-spin" /> : sendState === 'sent' ? <Check size={16} /> : 'Enviar'}</button>
                 </div>
