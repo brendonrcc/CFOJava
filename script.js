@@ -778,6 +778,7 @@
         const [progressText, setProgressText] = useState('Enviar'); 
         const [sentRecipient, setSentRecipient] = useState(null);
 
+        // AUMENTADO PARA 6 SEGUNDOS PARA EVITAR ERRO DE FLOOD NO FÓRUM
         const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
         const handleSend = async () => { 
@@ -786,8 +787,6 @@
             const subject = block.content || "Mensagem do Instrutor";
             const rawMessage = block.extra || "";
 
-            // --- CORREÇÃO AQUI ---
-            // Divide por "/" e limpa espaços. 
             const recipients = nickname.split('/').map(n => n.trim()).filter(n => n.length > 0);
 
             if (recipients.length === 0) return;
@@ -797,11 +796,10 @@
             let failCount = 0;
             let failedNicks = [];
 
-            // Loop de envio
             for (let i = 0; i < recipients.length; i++) {
                 const recipient = recipients[i];
                 
-                // Atualiza o botão
+                // Mostra quem está sendo processado no momento
                 setProgressText(`(${i + 1}/${recipients.length}) ${recipient}...`);
 
                 try {
@@ -812,29 +810,31 @@
                     } else {
                         failCount++;
                         failedNicks.push(recipient);
+                        console.warn(`Falha ao enviar para ${recipient}. Possível Flood ou Usuário inexistente.`);
                     }
                 } catch (error) {
-                    console.error("Erro envio:", error);
                     failCount++;
                     failedNicks.push(recipient);
                 }
 
-                // Delay de 3 segundos entre envios (segurança contra flood)
+                // DELAY DE SEGURANÇA: Se não for o último, espera 6 segundos
                 if (i < recipients.length - 1) {
-                    await delay(3000); 
+                    // Contagem regressiva no botão para o usuário saber que está esperando o flood
+                    for(let s = 6; s > 0; s--) {
+                        setProgressText(`Aguardando anti-spam... ${s}s`);
+                        await delay(1000);
+                    }
                 }
             }
 
-            // Finalização
             if (successCount > 0) {
                 onInteract(block.id); 
                 setSentRecipient(recipients.join(', '));
                 setSendState('sent'); 
                 setProgressText('Concluído');
 
-                // Se houver falha (ex: enviar para si mesmo), avisa aqui
                 if (failCount > 0) {
-                    alert(`Enviado para: ${successCount}.\nFalha ao enviar para: ${failedNicks.join(', ')} (Verifique se o usuário existe ou se é você mesmo).`);
+                    alert(`Enviado para: ${successCount}.\nFalha ao enviar para: ${failedNicks.join(', ')}.\n(Provavelmente erro de Flood ou Nick incorreto).`);
                 }
 
                 setTimeout(() => { 
@@ -846,7 +846,7 @@
             } else {
                 setSendState('idle');
                 setProgressText('Tentar Novamente');
-                alert(`Falha total. Não enviou para: ${failedNicks.join(', ')}.`);
+                alert(`Falha total. Nicks não enviados: ${failedNicks.join(', ')}.`);
             }
         };
 
