@@ -774,69 +774,70 @@
      const PrivateMessage = ({ block, status, onInteract }) => {
         const [isOpen, setIsOpen] = useState(false); 
         const [nickname, setNickname] = useState(''); 
-        const [sendState, setSendState] = useState('idle');
+        const [sendState, setSendState] = useState('idle'); // idle, sending, sent
+        const [progressText, setProgressText] = useState('Enviar'); // Texto dinâmico do botão
         const [sentRecipient, setSentRecipient] = useState(null);
 
+        // Função auxiliar de delay (igual ao seu snippet)
+        const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
         const handleSend = async () => { 
-            // Validação básica
             if (!nickname.trim()) return; 
-            setSendState('sending'); 
             
-            // Pega o assunto e mensagem definidos no script (CSV)
             const subject = block.content || "Mensagem do Instrutor";
             const rawMessage = block.extra || "";
 
-            // 1. LÓGICA DE DIVISÃO:
-            // O split('/') quebra o texto na barra.
-            // O map(n => n.trim()) remove espaços antes e depois do nick.
-            // O filter garante que não fiquem nicks vazios na lista.
+            // 1. Prepara a lista
             const recipients = nickname.split('/').map(n => n.trim()).filter(n => n.length > 0);
 
-            if (recipients.length === 0) {
-                setSendState('idle');
-                return;
-            }
+            if (recipients.length === 0) return;
 
+            setSendState('sending'); 
             let successCount = 0;
             let failCount = 0;
 
-            // 2. LOOP DE ENVIO (GARANTE O ENVIO PARA O SEGUNDO/TERCEIRO USER):
-            for (const recipient of recipients) {
-                // Pequena pausa (500ms) se houver mais de um envio, para segurança contra flood
-                if (successCount > 0 || failCount > 0) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
+            // 2. Loop estilo "Formulário"
+            for (let i = 0; i < recipients.length; i++) {
+                const recipient = recipients[i];
+                
+                // Atualiza o texto do botão: "Enviando (1/3): Nick"
+                setProgressText(`Enviando (${i + 1}/${recipients.length}): ${recipient}`);
 
-                // Envia para o usuário atual do loop
                 const success = await sendPrivateMessage(recipient, subject, rawMessage);
                 
                 if (success) successCount++;
                 else failCount++;
+
+                // Delay entre envios (exceto no último)
+                if (i < recipients.length - 1) {
+                    await delay(3000); // 3 segundos de delay (seguro contra flood)
+                }
             }
 
-            // 3. RESULTADO FINAL
+            // 3. Finalização
             if (successCount > 0) {
-                // Marca o bloco como concluído no script visualmente
                 onInteract(block.id); 
-                
-                // Mostra na interface para quem foi enviado (ex: "Nick1, Nick2")
                 setSentRecipient(recipients.join(', '));
                 setSendState('sent'); 
+                setProgressText('Concluído');
 
-                // Se algum falhou, avisa
                 if (failCount > 0) {
-                    alert(`Enviado com sucesso para ${successCount} aluno(s). Falha ao enviar para ${failCount}.`);
+                    alert(`Enviado para ${successCount}. Falha para ${failCount}.`);
                 }
 
-                // Fecha o modal após 2 segundos
-                setTimeout(() => { setIsOpen(false); setSendState('idle'); setNickname(''); }, 2000); 
+                setTimeout(() => { 
+                    setIsOpen(false); 
+                    setSendState('idle'); 
+                    setNickname(''); 
+                    setProgressText('Enviar');
+                }, 2000); 
             } else {
                 setSendState('idle');
-                alert('Erro total no envio. Verifique se os usuários existem ou se há restrição de flood.');
+                setProgressText('Enviar');
+                alert('Erro total no envio. Verifique usuário/flood.');
             }
         };
 
-        // Renderização do Estado "Enviado" (Visual Verde/Azul no script)
         if (status.isClicked) {
             return (
                 <div className="my-4 animate-fade-in select-none">
@@ -850,7 +851,6 @@
             );
         }
 
-        // Renderização do Botão Fechado
         if (!isOpen) { 
             return (
                 <div className="my-6">
@@ -865,7 +865,6 @@
             ); 
         }
         
-        // Renderização do Formulário Aberto
         return (
             <div className="my-6 animate-fade-in bg-white dark:bg-[#0c120e] border border-brand/30 rounded-sm shadow-lg overflow-hidden relative">
                 <div className="bg-brand/10 px-4 py-2 flex items-center justify-between border-b border-brand/10">
@@ -877,7 +876,14 @@
                           <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Users size={16} /></div>
                           <input type="text" value={nickname} onChange={(e) => setNickname(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} placeholder="NICK1 / NICK2 / NICK3" className="w-full bg-slate-100 dark:bg-dark-element pl-10 pr-4 py-3 text-sm font-bold uppercase text-slate-900 dark:text-white placeholder-slate-400 outline-none border border-slate-200 dark:border-slate-700 rounded-sm focus:border-brand focus:ring-1 focus:ring-brand font-condensed tracking-wide" autoFocus />
                       </div>
-                      <button onClick={handleSend} disabled={!nickname.trim() || sendState !== 'idle'} className="px-6 bg-brand hover:bg-brand-hover text-white rounded-sm font-bold uppercase text-xs tracking-widest disabled:opacity-50 transition-all flex items-center justify-center min-w-[100px]">{sendState === 'sending' ? <Loader2 size={16} className="animate-spin" /> : sendState === 'sent' ? <Check size={16} /> : 'Enviar'}</button>
+                      <button onClick={handleSend} disabled={!nickname.trim() || sendState !== 'idle'} className="px-6 bg-brand hover:bg-brand-hover text-white rounded-sm font-bold uppercase text-xs tracking-widest disabled:opacity-50 transition-all flex items-center justify-center min-w-[140px]">
+                          {sendState === 'sending' ? (
+                              <div className="flex items-center gap-2">
+                                  <Loader2 size={14} className="animate-spin" />
+                                  <span className="truncate max-w-[100px]">{progressText}</span>
+                              </div>
+                          ) : sendState === 'sent' ? <Check size={16} /> : 'Enviar'}
+                      </button>
                 </div>
             </div>
         );
@@ -1654,6 +1660,7 @@
         const [result, setResult] = useState({ approved: false, missing: [], checked: false });
         const [sendingMp, setSendingMp] = useState(false);
         const [postingForum, setPostingForum] = useState(false);
+        const [mpButtonLabel, setMpButtonLabel] = useState(''); 
 
         const REQUIRED_TAGS = ['[/b]', '[/i]', '[/u]', '[/strike]', '[/code]', '[/spoiler]', '[/table]', '[/img]', '[/font]', '[url=', '[size=', '[color='];
         
@@ -1676,31 +1683,30 @@
         const handleClear = () => { setStudentNick(''); setBbcodeInput(''); setResult({ approved: false, missing: [], checked: false }); };
         
         const handleMpSend = async (isApproval) => {
-             // Validação inicial
+             // 1. Validação
              if (!studentNick.trim()) {
                  addToast('error', 'Erro', 'Informe o nickname (ou múltiplos separados por /).');
                  return;
              }
              
-             // --- LÓGICA DE MÚLTIPLOS NICKS ---
              const recipients = studentNick.split('/').map(n => n.trim()).filter(n => n.length > 0);
              if (recipients.length === 0) return;
 
              setSendingMp(true);
-             
              let successCount = 0;
              let failCount = 0;
+             const delay = (ms) => new Promise(r => setTimeout(r, ms));
 
              try {
+                 // Prepara templates
                  const url = isApproval 
                      ? "https://raw.githubusercontent.com/brendonrcc/CFOmps/refs/heads/main/cfoapro" 
                      : "https://raw.githubusercontent.com/brendonrcc/CFOmps/refs/heads/main/cforep";
                  
                  const resp = await fetch(url);
-                 if (!resp.ok) throw new Error('Falha ao carregar modelo de MP');
+                 if (!resp.ok) throw new Error('Falha ao carregar modelo');
                  const template = await resp.text();
                  
-                 // Calcula os motivos com base na verificação do BBCode
                  let motives = "";
                  if (isApproval) {
                      motives = "Cumpriu os requisitos.";
@@ -1717,29 +1723,37 @@
                  const messageBody = template.replace('{MOTIVOS}', motives);
                  const subject = isApproval ? "[CFO] Aprovação na Atividade" : "[CFO] Reprovação na Atividade";
                  
-                 // --- LOOP DE ENVIO ---
-                 for (const recipient of recipients) {
-                     // Pausa entre envios para evitar erro
-                     if (successCount > 0 || failCount > 0) await new Promise(r => setTimeout(r, 500));
-
+                 // 2. Loop com atualização visual (Estilo do seu snippet)
+                 for (let i = 0; i < recipients.length; i++) {
+                     const recipient = recipients[i];
+                     
+                     // Atualiza texto do botão
+                     setMpButtonLabel(`(${i + 1}/${recipients.length}) ${recipient}`);
+                     
                      const success = await sendPrivateMessage(recipient, subject, messageBody);
                      if (success) successCount++;
                      else failCount++;
+
+                     // Delay se não for o último
+                     if (i < recipients.length - 1) {
+                         await delay(3000); 
+                     }
                  }
                  
-                 // Feedback visual
+                 // 3. Resultado
                  if (successCount > 0) {
                      let msg = `MP enviada para ${successCount} aluno(s).`;
                      if (failCount > 0) msg += ` Falha em ${failCount}.`;
                      addToast('success', 'Sucesso', msg);
                  } else {
-                     addToast('error', 'Erro', 'Falha total no envio. Verifique se os nicks existem.');
+                     addToast('error', 'Erro', 'Falha total no envio.');
                  }
 
              } catch (error) {
-                 addToast('error', 'Erro', `Erro ao processar: ${error.message}`);
+                 addToast('error', 'Erro', `Erro: ${error.message}`);
              } finally {
                  setSendingMp(false);
+                 setMpButtonLabel(''); // Limpa o texto personalizado
              }
         };
 
@@ -1924,9 +1938,18 @@
                                         <button onClick={handleForumPost} disabled={postingForum} className="py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-sm text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md group disabled:opacity-50">
                                             {postingForum ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} className="group-hover:scale-110 transition-transform" />} Postar no Fórum
                                         </button>
-                                        <button onClick={() => handleMpSend(true)} disabled={sendingMp} className="py-3 bg-slate-800 dark:bg-white text-white dark:text-black hover:bg-slate-900 dark:hover:bg-slate-200 font-bold rounded-sm text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md group disabled:opacity-50">
-                                            {sendingMp ? <Loader2 size={14} className="animate-spin" /> : <SendHorizontal size={14} className="group-hover:scale-110 transition-transform" />} Enviar MP Aprovação
-                                        </button>
+                                        <button onClick={() => handleMpSend(true)} disabled={sendingMp} className="...">
+    {sendingMp ? (
+        <>
+            <Loader2 size={14} className="animate-spin" /> 
+            <span className="truncate">{mpButtonLabel || 'Enviando...'}</span>
+        </>
+    ) : (
+        <>
+            <SendHorizontal size={14} className="group-hover:scale-110 transition-transform" /> Enviar MP Aprovação
+        </>
+    )}
+</button>
                                     </div>
                                 )}
                                 
@@ -1938,9 +1961,18 @@
                                         <button onClick={handleForumPost} disabled={postingForum} className="py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-sm text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all shadow-md group disabled:opacity-50">
                                             {postingForum ? <Loader2 size={14} className="animate-spin" /> : <Globe size={14} className="group-hover:scale-110 transition-transform" />} Postar no Fórum
                                         </button>
-                                        <button onClick={() => handleMpSend(false)} disabled={sendingMp} className="w-full py-3 bg-red-100 dark:bg-red-900/20 hover:bg-red-200 dark:hover:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-500/30 font-bold rounded-sm text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-all disabled:opacity-50">
-                                            {sendingMp ? <Loader2 size={14} className="animate-spin" /> : <SendHorizontal size={14} />} Enviar MP Reprovação
-                                        </button>
+                                        <button onClick={() => handleMpSend(false)} disabled={sendingMp} className="...">
+    {sendingMp ? (
+        <>
+            <Loader2 size={14} className="animate-spin" />
+            <span className="truncate">{mpButtonLabel || 'Enviando...'}</span>
+        </>
+    ) : (
+        <>
+            <SendHorizontal size={14} /> Enviar MP Reprovação
+        </>
+    )}
+</button>
                                     </div>
                                 )}
                             </div>
