@@ -781,11 +781,11 @@
             if (!nickname.trim()) return; 
             setSendState('sending'); 
             
-            // Pega o assunto e a mensagem configurados no script (CSV)
             const subject = block.content || "Mensagem do Instrutor";
             const rawMessage = block.extra || "";
 
-            // 1. DIVIDE OS NICKS PELA BARRA "/"
+            // --- LÓGICA DE MÚLTIPLOS NICKS ---
+            // Divide por "/" e remove espaços extras
             const recipients = nickname.split('/').map(n => n.trim()).filter(n => n.length > 0);
 
             if (recipients.length === 0) {
@@ -796,9 +796,9 @@
             let successCount = 0;
             let failCount = 0;
 
-            // 2. LOOP DE ENVIO PARA CADA ALUNO
+            // Envia para cada nick encontrado
             for (const recipient of recipients) {
-                // Pequeno delay para evitar erro de flood se forem muitos
+                // Pequeno delay para evitar bloqueio do fórum (flood)
                 if (successCount > 0 || failCount > 0) {
                     await new Promise(resolve => setTimeout(resolve, 500));
                 }
@@ -814,13 +814,14 @@
                 setSendState('sent'); 
 
                 if (failCount > 0) {
-                    alert(`Enviado para ${successCount}. Falha para ${failCount}.`);
+                    // Alerta se falhou para alguns
+                    alert(`Enviado para ${successCount}. Falha para ${failCount}. Verifique os nicks.`);
                 }
 
                 setTimeout(() => { setIsOpen(false); setSendState('idle'); setNickname(''); }, 2000); 
             } else {
                 setSendState('idle');
-                alert('Erro ao enviar. Verifique o usuário ou o flood.');
+                alert('Erro ao enviar. Verifique se os usuários existem ou aguarde o tempo de flood.');
             }
         };
 
@@ -1661,12 +1662,13 @@
         const handleClear = () => { setStudentNick(''); setBbcodeInput(''); setResult({ approved: false, missing: [], checked: false }); };
         
         const handleMpSend = async (isApproval) => {
-             // 1. Validação inicial e separação dos nicks
+             // Validação inicial
              if (!studentNick.trim()) {
-                 addToast('error', 'Erro', 'Por favor, informe o nickname do aluno (ou alunos separados por /).');
+                 addToast('error', 'Erro', 'Informe o nickname (ou múltiplos separados por /).');
                  return;
              }
              
+             // --- LÓGICA DE MÚLTIPLOS NICKS ---
              const recipients = studentNick.split('/').map(n => n.trim()).filter(n => n.length > 0);
              if (recipients.length === 0) return;
 
@@ -1684,6 +1686,7 @@
                  if (!resp.ok) throw new Error('Falha ao carregar modelo de MP');
                  const template = await resp.text();
                  
+                 // Calcula os motivos com base na verificação do BBCode
                  let motives = "";
                  if (isApproval) {
                      motives = "Cumpriu os requisitos.";
@@ -1700,9 +1703,9 @@
                  const messageBody = template.replace('{MOTIVOS}', motives);
                  const subject = isApproval ? "[CFO] Aprovação na Atividade" : "[CFO] Reprovação na Atividade";
                  
-                 // 2. Loop de envio para múltiplos destinatários
+                 // --- LOOP DE ENVIO ---
                  for (const recipient of recipients) {
-                     // Pequeno delay para evitar bloqueio por flood se forem muitos
+                     // Pausa entre envios para evitar erro
                      if (successCount > 0 || failCount > 0) await new Promise(r => setTimeout(r, 500));
 
                      const success = await sendPrivateMessage(recipient, subject, messageBody);
@@ -1710,13 +1713,13 @@
                      else failCount++;
                  }
                  
-                 // 3. Feedback final
+                 // Feedback visual
                  if (successCount > 0) {
                      let msg = `MP enviada para ${successCount} aluno(s).`;
                      if (failCount > 0) msg += ` Falha em ${failCount}.`;
                      addToast('success', 'Sucesso', msg);
                  } else {
-                     addToast('error', 'Erro', 'Falha total no envio. Verifique Flood/Usuário.');
+                     addToast('error', 'Erro', 'Falha total no envio. Verifique se os nicks existem.');
                  }
 
              } catch (error) {
